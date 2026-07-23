@@ -173,6 +173,10 @@ class ADDON_NICEYOUS1ERP_ORDERS extends ADDON_NICEYOUS1ERP
     $paymentCode = ADDON_NICEYOUS1ERP_PAYLOADS::moduleCode($paymentModule, $this->PaymentShippingAssocs, $this->cfg['defaultPaymentCode']);
     $isCod = ADDON_NICEYOUS1ERP_PAYLOADS::isCodModule($paymentModule, $this->cfg);
 
+    if (ADDON_NICEYOUS1ERP_PAYLOADS::isIrisTransaction($this->loadCompletedTransaction($paymentModule))) {
+      $paymentCode = (string)$this->cfg['irisPaymentCode'];
+    }
+
     $discountTotal = (float)($orderInfo['orddiscountamount'] ?? 0);
 
     $data = [];
@@ -270,6 +274,21 @@ class ADDON_NICEYOUS1ERP_ORDERS extends ADDON_NICEYOUS1ERP
       return (int)$row['tax_class_id'];
     }
     return 0;
+  }
+
+  /**
+   * Completed gateway transaction for this order, or null when the order
+   * has none (offline payment) or it never completed.
+   */
+  private function loadCompletedTransaction(string $paymentModule): ?array
+  {
+    $transaction = GetClass('TRANSACTION')->LoadByTransactionOrderId($this->orderId, $paymentModule);
+
+    if (!$transaction || (int)$transaction['status'] !== TRANS_STATUS_COMPLETED) {
+      return null;
+    }
+
+    return $transaction;
   }
 
   private function FindReceiptIdByOrderId(): string

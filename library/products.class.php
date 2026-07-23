@@ -213,13 +213,17 @@ class ADDON_NICEYOUS1ERP_PRODUCTS extends ADDON_NICEYOUS1ERP
     return ADDON_NICEYOUS1ERP_PAYLOADS::combinationLabel($values);
   }
 
+  /**
+   * NiceYou's MTRCATEGORY is the item's BRAND, so the ERP category resolves
+   * from the product's brand, not its category tree.
+   */
   private function erpCategoryForProduct(int $productId): string
   {
     $query = "
       SELECT cm.erp_cat_id
-      FROM [|PREFIX|]categoryassociations ca
-      JOIN [|PREFIX|]addon_niceyous1erp_category_map cm ON cm.categoryid = ca.categoryid
-      WHERE ca.productid = ?
+      FROM [|PREFIX|]products p
+      JOIN [|PREFIX|]addon_niceyous1erp_category_map cm ON cm.brandid = p.prodbrandid
+      WHERE p.productid = ?
       LIMIT 1;";
     $result = $GLOBALS['db']->Query($query);
     $GLOBALS['db']->bindParam($result, 1, $productId, PDO::PARAM_INT);

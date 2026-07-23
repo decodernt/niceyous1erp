@@ -173,10 +173,15 @@ class ADDON_NICEYOUS1ERP_API
       throw new Exception(self::ERR_NULL_RESPONSE);
     }
 
-    $decoded = json_decode($this->convertEncoding($response), true);
+    // Browser-list responses can run to many MB; keep only one copy of the
+    // payload alive at a time (raw → converted → decoded).
+    $converted = $this->convertEncoding($response);
+    unset($response);
+
+    $decoded = json_decode($converted, true);
 
     if (!is_array($decoded)) {
-      throw new Exception('Invalid JSON response: ' . mb_substr((string)$response, 0, 500));
+      throw new Exception('Invalid JSON response: ' . mb_substr($converted, 0, 500));
     }
 
     return $decoded;

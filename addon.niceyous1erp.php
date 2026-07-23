@@ -49,6 +49,12 @@ class ADDON_NICEYOUS1ERP extends ADDON
 
   public $V8Ready = true;
 
+  /** Bump together with EnsureSchema() steps. */
+  const SCHEMA_VERSION = 2;
+
+  /** Rows per page in the Mappings tab tables (server render + AJAX). */
+  const MAPPINGS_PAGE_SIZE = 50;
+
   public $cronTab = 60 * 10; // every 10 min in seconds
   public $enableCron = false;
 
@@ -81,7 +87,10 @@ class ADDON_NICEYOUS1ERP extends ADDON
     NagaCommerce_Event::bind('OrderUpdated', [$this, 'OrderUpdated']);
     NagaCommerce_Event::bind('OrderStatusChanged', [$this, 'OrderStatusChanged']);
 
-    if ($this->GetValue('BaseUrl') != '') {
+    // Master switch: the cron only runs when auto-sync is explicitly on,
+    // so a configured connection alone never starts syncing. Manual admin
+    // buttons keep working regardless.
+    if ($this->GetValue('BaseUrl') != '' && $this->GetValue('AutoSyncEnabled')) {
       $this->enableCron = true;
     }
   }
@@ -97,6 +106,13 @@ class ADDON_NICEYOUS1ERP extends ADDON
         'tabitems' => [
           'SyncOptions' => ['type' => 'label', 'label' => $this->langVar . 'SyncOptions'],
 
+          'AutoSyncEnabled' => [
+            'type' => 'checkbox',
+            'required' => false,
+            'name' => $this->langVar . 'AutoSyncEnabled',
+            'help' => $this->langVar . 'AutoSyncEnabledHelp',
+            'label' => $this->langVar . 'AutoSyncEnabledLabel'
+          ],
           'PushProductsEnabled' => [
             'type' => 'checkbox',
             'required' => false,
@@ -119,10 +135,13 @@ class ADDON_NICEYOUS1ERP extends ADDON
             'label' => $this->langVar . 'SyncOnNewOrderLabel'
           ],
           'SyncOrderStatuses' => [
-            'type' => 'text',
+            'type' => 'dropdown',
+            'multiselect' => true,
+            'multiselectheight' => 8,
             'required' => false,
             'name' => $this->langVar . 'SyncOrderStatuses',
-            'help' => $this->langVar . 'SyncOrderStatusesHelp'
+            'help' => $this->langVar . 'SyncOrderStatusesHelp',
+            'options' => $this->OrderStatusOptions()
           ],
           'CleanupDays' => [
             'type' => 'text',
@@ -141,6 +160,7 @@ class ADDON_NICEYOUS1ERP extends ADDON
           'SeriesReceipt' => ['type' => 'text', 'required' => false, 'default' => '6003', 'name' => $this->langVar . 'SeriesReceipt', 'help' => $this->langVar . 'SeriesReceiptHelp'],
           'SeriesInvoice' => ['type' => 'text', 'required' => false, 'default' => '6004', 'name' => $this->langVar . 'SeriesInvoice', 'help' => $this->langVar . 'SeriesInvoiceHelp'],
           'DefaultPaymentCode' => ['type' => 'text', 'required' => false, 'default' => '1000', 'name' => $this->langVar . 'DefaultPaymentCode', 'help' => $this->langVar . 'DefaultPaymentCodeHelp'],
+          'IrisPaymentCode' => ['type' => 'text', 'required' => false, 'default' => '1014', 'name' => $this->langVar . 'IrisPaymentCode', 'help' => $this->langVar . 'IrisPaymentCodeHelp'],
           'DefaultCarrierCode' => ['type' => 'text', 'required' => false, 'default' => '1', 'name' => $this->langVar . 'DefaultCarrierCode', 'help' => $this->langVar . 'DefaultCarrierCodeHelp'],
           'ShipmentCode' => ['type' => 'text', 'required' => false, 'default' => '103', 'name' => $this->langVar . 'ShipmentCode', 'help' => $this->langVar . 'ShipmentCodeHelp'],
           'ShipKindCode' => ['type' => 'text', 'required' => false, 'default' => '1000', 'name' => $this->langVar . 'ShipKindCode', 'help' => $this->langVar . 'ShipKindCodeHelp'],
@@ -232,6 +252,7 @@ class ADDON_NICEYOUS1ERP extends ADDON
     if (!$this->CheckInstallationParams($this->InstallationTables)) {
       $this->RunFirstInstallation();
     }
+    $this->EnsureSchema();
     $this->ShowSaveAndCancelButtons(true);
   }
 
@@ -240,6 +261,7 @@ class ADDON_NICEYOUS1ERP extends ADDON
     if (!$this->CheckInstallationParams($this->InstallationTables)) {
       $this->RunFirstInstallation();
     }
+    $this->EnsureSchema();
 
     if ($BackgroundProcess = $this->CheckPushProcess()) {
       MessageBox($BackgroundProcess, MSG_WARNING);
@@ -254,6 +276,16 @@ class ADDON_NICEYOUS1ERP extends ADDON
           'Home' => array(
             'name' => $this->langVar . 'Home',
             'link' => 'index.php?ToDo=runAddon&addon=' . $this->id,
+            'active' => false
+          ),
+          'Mappings' => array(
+            'name' => $this->langVar . 'Mappings',
+            'link' => 'index.php?ToDo=runAddon&addon=' . $this->id . '&route=viewMappings',
+            'active' => false
+          ),
+          'Mapped' => array(
+            'name' => $this->langVar . 'Mapped',
+            'link' => 'index.php?ToDo=runAddon&addon=' . $this->id . '&route=viewMapped',
             'active' => false
           ),
           'Transactions' => array(
@@ -315,11 +347,35 @@ class ADDON_NICEYOUS1ERP extends ADDON
         break;
 
       case 'bootstrapproducts':
-        $this->BootstrapProducts();
+        $this->BootstrapProductsAction();
         break;
 
       case 'bootstrapcategories':
-        $this->BootstrapCategories();
+        $this->BootstrapCategoriesAction();
+        break;
+
+      case 'viewmappings':
+        $this->viewMappings();
+        break;
+
+      case 'viewmapped':
+        $this->viewMappedReport();
+        break;
+
+      case 'mappingsdata':
+        $this->mappingsData();
+        break;
+
+      case 'deleteproducts':
+        $this->deleteProductsAction();
+        break;
+
+      case 'removeproductmapping':
+        $this->removeProductMapping();
+        break;
+
+      case 'removecategorymapping':
+        $this->removeCategoryMapping();
         break;
 
       case 'viewtransactions':
@@ -462,6 +518,70 @@ class ADDON_NICEYOUS1ERP extends ADDON
   /* ------------------------------------------------------ shared helpers */
 
   /**
+   * Version-gated schema upgrades for installs that predate them (guarded on
+   * cron paths too, not just admin visits). v2: the ERP category map's eshop
+   * side becomes BRANDS — NiceYou's MTRCATEGORY list holds brand names, so
+   * matching against eshop categories was wrong. Existing category-based rows
+   * are wiped; re-run Bootstrap Categories after this lands.
+   */
+  protected function EnsureSchema(): void
+  {
+    if ((int)$this->GetValue('schemaVersion') >= self::SCHEMA_VERSION) {
+      return;
+    }
+
+    $table = '[|PREFIX|]addon_niceyous1erp_category_map';
+
+    $result = $GLOBALS['db']->Query("SHOW COLUMNS FROM $table LIKE 'brandid';");
+    if (!$GLOBALS['db']->FetchOne($result)) {
+      $alter = $GLOBALS['db']->Query("ALTER TABLE $table
+        ADD COLUMN `brandid` int(11) NULL AFTER `mapid`,
+        ADD COLUMN `brand_title` varchar(500) NULL;");
+      $GLOBALS['db']->Execute($alter);
+
+      $wipe = $GLOBALS['db']->Query("DELETE FROM $table;");
+      $GLOBALS['db']->Execute($wipe);
+    }
+
+    $result = $GLOBALS['db']->Query("SHOW COLUMNS FROM $table LIKE 'categoryid';");
+    if ($GLOBALS['db']->FetchOne($result)) {
+      $alter = $GLOBALS['db']->Query("ALTER TABLE $table DROP COLUMN `categoryid`, DROP COLUMN `cat_title`;");
+      $GLOBALS['db']->Execute($alter);
+    }
+
+    $this->SetModuleVar('schemaVersion', self::SCHEMA_VERSION);
+  }
+
+  /**
+   * Store order statuses as dropdown options (label => statusid).
+   */
+  protected function OrderStatusOptions(): array
+  {
+    $options = [];
+
+    $query = "SELECT statusid, statusdesc FROM [|PREFIX|]order_status ORDER BY statusid ASC;";
+    $result = $GLOBALS['db']->Query($query);
+    foreach ((array)$GLOBALS['db']->FetchAll($result) as $row) {
+      $options[GetLang($row['statusdesc'])] = (string)$row['statusid'];
+    }
+
+    return $options;
+  }
+
+  /**
+   * Selected sync statuses as string ids. GetValue returns an array when
+   * more than one multiselect option is saved, a plain string otherwise;
+   * legacy comma-separated values from the old text field still parse.
+   */
+  public function SyncOrderStatusIds(): array
+  {
+    $value = $this->GetValue('SyncOrderStatuses');
+    $statuses = is_array($value) ? $value : explode(',', (string)$value);
+
+    return array_values(array_filter(array_map('trim', array_map('strval', $statuses)), 'strlen'));
+  }
+
+  /**
    * Logged-in s1services client.
    * @throws Exception
    */
@@ -500,6 +620,7 @@ class ADDON_NICEYOUS1ERP extends ADDON
       'seriesReceipt' => $this->GetValue('SeriesReceipt'),
       'seriesInvoice' => $this->GetValue('SeriesInvoice'),
       'defaultPaymentCode' => $this->GetValue('DefaultPaymentCode'),
+      'irisPaymentCode' => $this->GetValue('IrisPaymentCode'),
       'defaultCarrierCode' => $this->GetValue('DefaultCarrierCode'),
       'shipmentCode' => $this->GetValue('ShipmentCode'),
       'shipKindCode' => $this->GetValue('ShipKindCode'),
@@ -582,6 +703,9 @@ class ADDON_NICEYOUS1ERP extends ADDON
     $this->SetModuleVar('lastJobRun', time());
 
     ini_set('max_execution_time', 0);
+    ini_set('memory_limit', '1024M');
+
+    $this->EnsureSchema();
 
     require_once(__DIR__ . '/library/products.class.php');
     require_once(__DIR__ . '/library/webfifo.class.php');
@@ -644,17 +768,25 @@ class ADDON_NICEYOUS1ERP extends ADDON
     require_once(__DIR__ . '/library/webfifo.class.php');
 
     try {
+      ini_set('max_execution_time', 0);
+      ini_set('memory_limit', '1024M');
       $webfifo = new ADDON_NICEYOUS1ERP_WEBFIFO();
       $staged = $webfifo->Fetch();
       $updated = $webfifo->Apply();
       FlashMessage(GetLang($this->langVar . 'WebFifoDone', ['staged' => $staged, 'updated' => $updated]), MSG_SUCCESS, $redirectUrl);
-    } catch (Exception $e) {
-      $GLOBALS['NG_CLASS_LOG']->LogSystemError(['addon', $this->GetId()], 'WebFifoSync Error', $e->getMessage());
+    } catch (Throwable $e) {
+      $GLOBALS['NG_CLASS_LOG']->LogSystemError(['addon', $this->GetId()], 'WebFifoSync Error', $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
       FlashMessage($e->getMessage(), MSG_ERROR, $redirectUrl);
     }
   }
 
-  private function BootstrapProducts()
+  /**
+   * NOTE: deliberately NOT named BootstrapProducts. The MAPPINGS library
+   * class extends this addon class, and PHP resolves a same-named PRIVATE
+   * method in the calling scope over the subclass's public one — a route
+   * handler named like the library method calls itself infinitely.
+   */
+  private function BootstrapProductsAction()
   {
     $redirectUrl = "/admin/index.php?ToDo=runAddon&addon=$this->id";
 
@@ -662,27 +794,30 @@ class ADDON_NICEYOUS1ERP extends ADDON
 
     try {
       ini_set('max_execution_time', 0);
+      ini_set('memory_limit', '1024M');
       $mappings = new ADDON_NICEYOUS1ERP_MAPPINGS();
       [$mapped, $skipped] = $mappings->BootstrapProducts();
       FlashMessage(GetLang($this->langVar . 'BootstrapProductsDone', ['mapped' => $mapped, 'skipped' => $skipped]), MSG_SUCCESS, $redirectUrl);
-    } catch (Exception $e) {
-      $GLOBALS['NG_CLASS_LOG']->LogSystemError(['addon', $this->GetId()], 'BootstrapProducts Error', $e->getMessage());
+    } catch (Throwable $e) {
+      $GLOBALS['NG_CLASS_LOG']->LogSystemError(['addon', $this->GetId()], 'BootstrapProducts Error', $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
       FlashMessage($e->getMessage(), MSG_ERROR, $redirectUrl);
     }
   }
 
-  private function BootstrapCategories()
+  private function BootstrapCategoriesAction()
   {
     $redirectUrl = "/admin/index.php?ToDo=runAddon&addon=$this->id";
 
     require_once(__DIR__ . '/library/mappings.class.php');
 
     try {
+      ini_set('max_execution_time', 0);
+      ini_set('memory_limit', '1024M');
       $mappings = new ADDON_NICEYOUS1ERP_MAPPINGS();
       [$mapped, $unmatched] = $mappings->BootstrapCategories();
       FlashMessage(GetLang($this->langVar . 'BootstrapCategoriesDone', ['mapped' => $mapped, 'unmatched' => $unmatched]), MSG_SUCCESS, $redirectUrl);
-    } catch (Exception $e) {
-      $GLOBALS['NG_CLASS_LOG']->LogSystemError(['addon', $this->GetId()], 'BootstrapCategories Error', $e->getMessage());
+    } catch (Throwable $e) {
+      $GLOBALS['NG_CLASS_LOG']->LogSystemError(['addon', $this->GetId()], 'BootstrapCategories Error', $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
       FlashMessage($e->getMessage(), MSG_ERROR, $redirectUrl);
     }
   }
@@ -691,6 +826,332 @@ class ADDON_NICEYOUS1ERP extends ADDON
   {
     $this->template_data['Module']['ModuleTabs']['Home']['active'] = true;
     $this->ParseTemplate('home', false, $this->template_data);
+  }
+
+  /**
+   * Graphical mapping report: how much of the catalog is paired to the ERP
+   * (products / variations by EAN, ERP categories by name) plus the rows
+   * that still need attention.
+   */
+  private function viewMappings()
+  {
+    $this->template_data['Module']['ModuleTabs']['Mappings']['active'] = true;
+
+    $map = '[|PREFIX|]addon_niceyous1erp_product_map';
+
+    $simpleTotal = $this->countRows("
+      SELECT COUNT(*) AS c FROM [|PREFIX|]products
+      WHERE european_article_number != '';");
+    $simpleMapped = $this->countRows("
+      SELECT COUNT(*) AS c FROM [|PREFIX|]products p
+      JOIN $map m ON (m.productid = p.productid AND m.combinationid = 0)
+      WHERE p.european_article_number != '';");
+
+    $comboTotal = $this->countRows("
+      SELECT COUNT(*) AS c FROM [|PREFIX|]product_variation_combinations
+      WHERE vcbarcode != '' AND vcenabled = 1;");
+    $comboMapped = $this->countRows("
+      SELECT COUNT(*) AS c FROM [|PREFIX|]product_variation_combinations c
+      JOIN $map m ON (m.productid = c.vcproductid AND m.combinationid = c.combinationid)
+      WHERE c.vcbarcode != '' AND c.vcenabled = 1;");
+
+    $catTotal = $this->countRows("SELECT COUNT(*) AS c FROM [|PREFIX|]addon_niceyous1erp_category_map;");
+    $catMapped = $this->countRows("SELECT COUNT(*) AS c FROM [|PREFIX|]addon_niceyous1erp_category_map WHERE brandid IS NOT NULL;");
+
+    [$unmappedProductsTotal, $unmappedProducts] = $this->fetchMappingsList('unmappedProducts', 0);
+    [$unmappedCombinationsTotal, $unmappedCombinations] = $this->fetchMappingsList('unmappedCombinations', 0);
+    [$noEanCount, $noEanProducts] = $this->fetchMappingsList('noEan', 0);
+    [$unmatchedCategoriesTotal, $unmatchedCategories] = $this->fetchMappingsList('unmatchedCategories', 0);
+
+    $this->template_data['mappings'] = [
+      'simple' => $this->mappingStat($simpleMapped, $simpleTotal),
+      'combinations' => $this->mappingStat($comboMapped, $comboTotal),
+      'categories' => $this->mappingStat($catMapped, $catTotal),
+      'pageSize' => self::MAPPINGS_PAGE_SIZE,
+      'noEanCount' => $noEanCount,
+      'unmappedProductsTotal' => $unmappedProductsTotal,
+      'unmappedCombinationsTotal' => $unmappedCombinationsTotal,
+      'unmatchedCategoriesTotal' => $unmatchedCategoriesTotal,
+      'unmappedProducts' => $unmappedProducts,
+      'unmappedCombinations' => $unmappedCombinations,
+      'unmatchedCategories' => $unmatchedCategories,
+      'noEanProducts' => $noEanProducts,
+    ];
+
+    $this->ParseTemplate('mappings', false, $this->template_data);
+  }
+
+  /**
+   * Mapped report: everything currently linked to the ERP, searchable, with
+   * per-row removal of the mapping.
+   */
+  private function viewMappedReport()
+  {
+    $this->template_data['Module']['ModuleTabs']['Mapped']['active'] = true;
+
+    $search = trim((string)($_REQUEST['search'] ?? ''));
+    $listLimit = 200;
+
+    $where = '';
+    if ($search !== '') {
+      $where = "WHERE (p.prodname LIKE ? OR p.prodcode LIKE ? OR p.european_article_number LIKE ?
+        OR c.vcsku LIKE ? OR c.vcbarcode LIKE ? OR m.erp_mtrl = ?)";
+    }
+
+    $query = "
+      SELECT m.productid, m.combinationid, m.erp_mtrl, m.last_update,
+             p.prodname, p.prodcode, p.european_article_number,
+             c.vcsku, c.vcbarcode
+      FROM [|PREFIX|]addon_niceyous1erp_product_map m
+      LEFT JOIN [|PREFIX|]products p ON (p.productid = m.productid)
+      LEFT JOIN [|PREFIX|]product_variation_combinations c
+        ON (c.vcproductid = m.productid AND c.combinationid = m.combinationid)
+      $where
+      ORDER BY m.last_update DESC, m.productid ASC
+      LIMIT " . $listLimit . ";";
+    $result = $GLOBALS['db']->Query($query);
+    if ($search !== '') {
+      $like = '%' . $search . '%';
+      for ($i = 1; $i <= 5; $i++) {
+        $GLOBALS['db']->bindParam($result, $i, $like, PDO::PARAM_STR);
+      }
+      $GLOBALS['db']->bindParam($result, 6, $search, PDO::PARAM_STR);
+    }
+
+    $products = [];
+    foreach ((array)$GLOBALS['db']->FetchAll($result) as $row) {
+      $isCombination = (int)$row['combinationid'] > 0;
+      $products[] = [
+        'productid' => (int)$row['productid'],
+        'combinationid' => (int)$row['combinationid'],
+        'prodname' => (string)$row['prodname'],
+        'sku' => $isCombination && trim((string)$row['vcsku']) !== '' ? (string)$row['vcsku'] : (string)$row['prodcode'],
+        'ean' => $isCombination ? (string)$row['vcbarcode'] : (string)$row['european_article_number'],
+        'erp_mtrl' => (string)$row['erp_mtrl'],
+        'orphan' => $row['prodname'] === null,
+        'last_update' => !empty($row['last_update']) ? ng_date('d/m/Y H:i', (int)$row['last_update']) : '-',
+      ];
+    }
+
+    $query = "
+      SELECT mapid, brandid, erp_cat_id, erp_title, brand_title
+      FROM [|PREFIX|]addon_niceyous1erp_category_map
+      WHERE brandid IS NOT NULL
+      ORDER BY erp_title ASC;";
+    $result = $GLOBALS['db']->Query($query);
+    $categories = (array)$GLOBALS['db']->FetchAll($result);
+
+    $this->template_data['mapped'] = [
+      'search' => $search,
+      'listLimit' => $listLimit,
+      'total' => $this->countRows("SELECT COUNT(*) AS c FROM [|PREFIX|]addon_niceyous1erp_product_map;"),
+      'products' => $products,
+      'categories' => $categories,
+    ];
+
+    $this->ParseTemplate('mapped', false, $this->template_data);
+  }
+
+  /**
+   * Drop a product↔ERP link. The next push of that product re-adopts by EAN
+   * or creates a new ERP item — same as a never-mapped product.
+   */
+  private function removeProductMapping()
+  {
+    $redirectUrl = "/admin/index.php?ToDo=runAddon&addon=$this->id&route=viewMapped";
+
+    $productId = (int)($_REQUEST['productId'] ?? 0);
+    $combinationId = (int)($_REQUEST['combinationId'] ?? -1);
+
+    if ($productId <= 0 || $combinationId < 0) {
+      FlashMessage(GetLang($this->langVar . 'InvalidMapping'), MSG_ERROR, $redirectUrl);
+      return;
+    }
+
+    $GLOBALS['db']->DeleteQuery(
+      'addon_niceyous1erp_product_map',
+      'WHERE productid = ' . $productId . ' AND combinationid = ' . $combinationId
+    );
+
+    FlashMessage(GetLang($this->langVar . 'MappingRemoved'), MSG_SUCCESS, $redirectUrl);
+  }
+
+  /**
+   * Drop a category↔ERP link. Bootstrap Categories recreates the row (matched
+   * again by name, or unmatched for manual attention).
+   */
+  private function removeCategoryMapping()
+  {
+    $redirectUrl = "/admin/index.php?ToDo=runAddon&addon=$this->id&route=viewMapped";
+
+    $mapId = (int)($_REQUEST['mapId'] ?? 0);
+
+    if ($mapId <= 0) {
+      FlashMessage(GetLang($this->langVar . 'InvalidMapping'), MSG_ERROR, $redirectUrl);
+      return;
+    }
+
+    $GLOBALS['db']->DeleteQuery('addon_niceyous1erp_category_map', 'WHERE mapid = ' . $mapId);
+
+    FlashMessage(GetLang($this->langVar . 'MappingRemoved'), MSG_SUCCESS, $redirectUrl);
+  }
+
+  /**
+   * Shared list definitions for the Mappings tab — the server-rendered first
+   * page and the AJAX pager use the same SQL so they cannot drift.
+   */
+  private function mappingsListDefs(): array
+  {
+    $map = '[|PREFIX|]addon_niceyous1erp_product_map';
+
+    // Products that will genuinely reach the ERP with no EAN at all: no own
+    // EAN and no enabled variation carrying a barcode (variation rows push
+    // with their own barcode, so barcoded parents are covered).
+    $noEanWhere = "
+      p.european_article_number = '' AND p.prodvisible = 1 AND p.prodprice > 0
+      AND NOT EXISTS (
+        SELECT 1 FROM [|PREFIX|]product_variation_combinations c
+        WHERE c.vcproductid = p.productid AND c.vcenabled = 1 AND c.vcbarcode != ''
+      )";
+
+    $unmappedProductsFrom = "
+      FROM [|PREFIX|]products p
+      LEFT JOIN $map m ON (m.productid = p.productid AND m.combinationid = 0)
+      WHERE p.european_article_number != '' AND m.productid IS NULL";
+
+    $unmappedCombinationsFrom = "
+      FROM [|PREFIX|]product_variation_combinations c
+      JOIN [|PREFIX|]products p ON (p.productid = c.vcproductid)
+      LEFT JOIN $map m ON (m.productid = c.vcproductid AND m.combinationid = c.combinationid)
+      WHERE c.vcbarcode != '' AND c.vcenabled = 1 AND m.productid IS NULL";
+
+    return [
+      'unmappedProducts' => [
+        'count' => "SELECT COUNT(*) AS c $unmappedProductsFrom",
+        'data' => "SELECT p.productid, p.prodname, p.prodcode, p.european_article_number
+          $unmappedProductsFrom ORDER BY p.productid ASC",
+      ],
+      'unmappedCombinations' => [
+        'count' => "SELECT COUNT(*) AS c $unmappedCombinationsFrom",
+        'data' => "SELECT c.vcproductid, c.combinationid, c.vcsku, c.vcbarcode, p.prodname
+          $unmappedCombinationsFrom ORDER BY c.vcproductid ASC, c.combinationid ASC",
+      ],
+      'noEan' => [
+        'count' => "SELECT COUNT(*) AS c FROM [|PREFIX|]products p WHERE $noEanWhere",
+        'data' => "SELECT p.productid, p.prodname, p.prodcode
+          FROM [|PREFIX|]products p WHERE $noEanWhere ORDER BY p.productid ASC",
+      ],
+      'unmatchedCategories' => [
+        'count' => "SELECT COUNT(*) AS c FROM [|PREFIX|]addon_niceyous1erp_category_map WHERE brandid IS NULL",
+        'data' => "SELECT erp_cat_id, erp_title
+          FROM [|PREFIX|]addon_niceyous1erp_category_map WHERE brandid IS NULL ORDER BY erp_title ASC",
+      ],
+    ];
+  }
+
+  /**
+   * Returns [total, rows] for one Mappings list page.
+   */
+  private function fetchMappingsList(string $key, int $page): array
+  {
+    $defs = $this->mappingsListDefs();
+    if (!isset($defs[$key])) {
+      return [0, []];
+    }
+
+    $total = $this->countRows($defs[$key]['count'] . ';');
+
+    $offset = max(0, $page) * self::MAPPINGS_PAGE_SIZE;
+    $result = $GLOBALS['db']->Query($defs[$key]['data'] . ' LIMIT ' . $offset . ', ' . self::MAPPINGS_PAGE_SIZE . ';');
+    $rows = (array)$GLOBALS['db']->FetchAll($result);
+
+    return [$total, $rows];
+  }
+
+  /**
+   * AJAX pager endpoint for the Mappings tab tables.
+   */
+  private function mappingsData()
+  {
+    if (strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) !== 'xmlhttprequest') {
+      die;
+    }
+
+    $key = (string)($_REQUEST['table'] ?? '');
+    $page = max(0, (int)($_REQUEST['page'] ?? 0));
+
+    [$total, $rows] = $this->fetchMappingsList($key, $page);
+
+    header('Content-Type: application/json');
+    echo json_encode([
+      'success' => true,
+      'table' => $key,
+      'total' => $total,
+      'page' => $page,
+      'pageSize' => self::MAPPINGS_PAGE_SIZE,
+      'rows' => $rows,
+    ], JSON_UNESCAPED_UNICODE);
+    die;
+  }
+
+  /**
+   * Mass-delete eshop products from the Mappings tab (AJAX POST). Runs the
+   * canonical admin deletion — NG_ADMIN_PRODUCT::DoDeleteProducts cleans all
+   * related tables in a transaction and refuses products present in orders
+   * (queuing flash warnings the reloaded page will show).
+   */
+  private function deleteProductsAction()
+  {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST'
+      || strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) !== 'xmlhttprequest') {
+      die;
+    }
+
+    header('Content-Type: application/json');
+
+    $productIds = array_values(array_filter(array_map('intval', (array)($_POST['products'] ?? [])), 'isId'));
+
+    if (empty($productIds)) {
+      echo json_encode(['success' => false, 'message' => GetLang($this->langVar . 'NoProductsSelected')]);
+      die;
+    }
+
+    $deleted = GetClass('NG_ADMIN_PRODUCT')->DoDeleteProducts($productIds);
+
+    if ($deleted) {
+      // Drop any map/queue leftovers for the removed products.
+      $idList = implode(',', $productIds);
+      $GLOBALS['db']->DeleteQuery('addon_niceyous1erp_product_map', 'WHERE productid IN (' . $idList . ')');
+      $GLOBALS['db']->DeleteQuery('addon_niceyous1erp_transactions', 'WHERE productid IN (' . $idList . ')');
+
+      $GLOBALS['NG_CLASS_LOG']->LogAdminAction(count($productIds) . ' products deleted via niceyous1erp mappings report');
+      FlashMessage(GetLang('ProductsDeletedSuccessfully'), MSG_SUCCESS);
+    }
+
+    echo json_encode(['success' => (bool)$deleted], JSON_UNESCAPED_UNICODE);
+    die;
+  }
+
+  private function mappingStat(int $mapped, int $total): array
+  {
+    $percent = $total > 0 ? (int)floor(min(100, $mapped / $total * 100)) : 0;
+
+    return [
+      'mapped' => $mapped,
+      'total' => $total,
+      'unmapped' => max(0, $total - $mapped),
+      'percent' => $percent,
+      'barClass' => $percent >= 90 ? 'bg-success' : ($percent >= 50 ? 'bg-warning' : 'bg-danger'),
+    ];
+  }
+
+  private function countRows(string $query): int
+  {
+    $result = $GLOBALS['db']->Query($query);
+    if ($row = $GLOBALS['db']->FetchOne($result)) {
+      return (int)$row['c'];
+    }
+    return 0;
   }
 
   private function viewTransactions()
@@ -795,7 +1256,7 @@ class ADDON_NICEYOUS1ERP extends ADDON
 
   public function SendNewOrderInfo(NagaCommerce_Event $event)
   {
-    if (!$this->GetValue('SyncOnNewOrder')) {
+    if (!$this->GetValue('AutoSyncEnabled') || !$this->GetValue('SyncOnNewOrder')) {
       return false;
     }
 
@@ -817,6 +1278,10 @@ class ADDON_NICEYOUS1ERP extends ADDON
 
   public function OrderUpdated(NagaCommerce_Event $event)
   {
+    if (!$this->GetValue('AutoSyncEnabled')) {
+      return false;
+    }
+
     $ordToken = $event->data[0];
 
     $order = LoadPendingOrdersByToken($ordToken, true);
@@ -840,6 +1305,10 @@ class ADDON_NICEYOUS1ERP extends ADDON
 
   public function OrderStatusChanged(NagaCommerce_Event $event)
   {
+    if (!$this->GetValue('AutoSyncEnabled')) {
+      return false;
+    }
+
     $orderId = $event->data['orderId'] ?? null;
 
     if (empty($orderId)) {
@@ -854,7 +1323,7 @@ class ADDON_NICEYOUS1ERP extends ADDON
 
     // NiceYou rule: push the order only when it enters one of the
     // configured statuses (e.g. "ready to ship"). Empty setting = any status.
-    $statuses = array_filter(array_map('trim', explode(',', (string)$this->GetValue('SyncOrderStatuses'))));
+    $statuses = $this->SyncOrderStatusIds();
     if (!empty($statuses) && !in_array((string)$order['status'], $statuses, true)) {
       return false;
     }
@@ -868,6 +1337,10 @@ class ADDON_NICEYOUS1ERP extends ADDON
 
   public function ShipmentCreated(NagaCommerce_Event $event)
   {
+    if (!$this->GetValue('AutoSyncEnabled')) {
+      return false;
+    }
+
     $data = $event->data['request'];
     $orderId = $data['orderId'] ?? null;
 

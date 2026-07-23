@@ -30,6 +30,7 @@ class ADDON_NICEYOUS1ERP_PAYLOADS
       'seriesReceipt' => '6003',
       'seriesInvoice' => '6004',
       'defaultPaymentCode' => '1000',
+      'irisPaymentCode' => '1014',
       'defaultCarrierCode' => '1',
       'shipmentCode' => '103',
       'shipKindCode' => '1000',
@@ -329,6 +330,29 @@ class ADDON_NICEYOUS1ERP_PAYLOADS
   public static function isCodModule($module, array $cfg): bool
   {
     return in_array((string)$module, array_map('trim', (array)$cfg['codModules']), true);
+  }
+
+  /**
+   * True when a gateway transaction was actually paid via IRIS. IRIS rides
+   * on the card gateway modules (Viva), so the module→code association can't
+   * tell it apart; the stored gateway response can. vivasmartcheckout stores
+   * the new-API camelCase response (bankId), legacy vivawallet the old-API
+   * PascalCase one (BankId) — both mark IRIS as NET_IRIS.
+   */
+  public static function isIrisTransaction($transaction): bool
+  {
+    if (!is_array($transaction) || empty($transaction['extrainfo'])) {
+      return false;
+    }
+
+    $extraInfo = json_decode((string)$transaction['extrainfo'], true);
+    if (!is_array($extraInfo)) {
+      return false;
+    }
+
+    $bankId = $extraInfo['response']['bankId'] ?? $extraInfo['response']['BankId'] ?? '';
+
+    return $bankId === 'NET_IRIS';
   }
 
   public static function netOfVat(float $gross, float $vatPercent): float

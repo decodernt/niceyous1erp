@@ -22,12 +22,13 @@ CREATE TABLE IF NOT EXISTS `%%PREFIX%%addon_niceyous1erp_product_map` (
   KEY `i_niceyous1erp_product_map_mtrl` (`erp_mtrl`)
 ) ENGINE=InnoDB DEFAULT CHARSET=%%CHARSET%% COLLATE %%COLLATE%%;
 
+-- eshop side is BRANDS: NiceYou's MTRCATEGORY list holds brand names.
 CREATE TABLE IF NOT EXISTS `%%PREFIX%%addon_niceyous1erp_category_map` (
   `mapid` int(11) NOT NULL AUTO_INCREMENT,
-  `categoryid` int(11) NULL,
+  `brandid` int(11) NULL,
   `erp_cat_id` varchar(50) NOT NULL,
   `erp_title` varchar(500) NULL,
-  `cat_title` varchar(500) NULL,
+  `brand_title` varchar(500) NULL,
   PRIMARY KEY (`mapid`),
   UNIQUE KEY `u_niceyous1erp_category_map` (`erp_cat_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=%%CHARSET%% COLLATE %%COLLATE%%;

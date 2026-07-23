@@ -13,7 +13,7 @@ flow back ERP → eshop.
 | Product push | eshop → ERP | cron (10 min) / "Push Products" button | Changed products (from `lastProductPush` watermark) queued into `addon_niceyous1erp_transactions` (TODO/DONE/ERROR), drained as raw `s1services` `ITEM` setData calls. `CODE = <CodePrefix><sku>`, EAN dedup against ERP `ITEM.CODE1`, cover image attached via `ITEDOCDATA` (SOSOURCE 51). |
 | Order push | eshop → ERP | order events (see below) | Customer upserted (local `customer_map` + ERP email→phone dedup), then a `SALDOC` is created/updated. Receipt series 6003 vs invoice series 6004 depending on the order's invoice request. Shipping (`104`) and COD fee (`105`) as EXPANAL expense rows, net of `ExpenseVatPercent`. `FINCODE = orderid`. |
 | WEB-FIFO | ERP → eshop | cron / "WEB-FIFO Sync" button | ERP's `WEB-FIFO` browser list staged into `addon_niceyous1erp_webfifo`, then applied to `products.prodcostprice` via the product map. |
-| Bootstrap | one-time | orange buttons on addon home | Product map by EAN/barcode against `WSItems`; category map by exact name against `ITECATEGORY`. |
+| Bootstrap | one-time | orange buttons on addon home | Product map by EAN/barcode against `WSItems`; ERP category map by exact name against eshop **brands** (NiceYou's `ITECATEGORY`/MTRCATEGORY list holds brand names, not categories — schema v2). |
 
 ## First-time setup (in this order)
 
@@ -53,10 +53,10 @@ flow back ERP → eshop.
    - *Bootstrap Products* — pairs ERP items to products/variations by
      EAN/barcode into `addon_niceyous1erp_product_map`. Rows without EAN
      on either side are skipped (push-time EAN lookup is the safety net).
-   - *Bootstrap Categories* — pairs by exact name into
-     `addon_niceyous1erp_category_map`; unmatched rows are stored with
-     NULL categoryid and can be fixed manually; unmapped products fall to
-     `DefaultErpCategory`.
+   - *Bootstrap Categories* — pairs ERP MTRCATEGORY entries to eshop
+     **brands** by exact name into `addon_niceyous1erp_category_map`;
+     unmatched rows are stored with NULL brandid; products whose brand is
+     unmapped fall to `DefaultErpCategory`.
 
 6. **Enable the sync flags** (Settings tab):
    - *Push products* — eshop → ERP product flow.
