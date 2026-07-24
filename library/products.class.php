@@ -78,6 +78,7 @@ class ADDON_NICEYOUS1ERP_PRODUCTS extends ADDON_NICEYOUS1ERP
   {
     $api = $this->ConnectApi();
     $cfg = $this->BuildPayloadConfig();
+    $debug = (bool)$this->GetValue('DebugProductSync');
 
     $query = "SELECT * FROM [|PREFIX|]addon_niceyous1erp_transactions WHERE status = 'TODO' ORDER BY transactionid ASC LIMIT " . self::SEND_BATCH . ";";
     $result = $GLOBALS['db']->Query($query);
@@ -111,26 +112,29 @@ class ADDON_NICEYOUS1ERP_PRODUCTS extends ADDON_NICEYOUS1ERP
           if (!empty($response['success'])) {
             $newId = (string)$response['id'];
             $this->SaveProductMtrl((int)$t['productid'], (int)$t['combinationid'], $newId);
-            $this->markTransaction((int)$tr['transactionid'], 'DONE');
+            $this->markTransaction((int)$tr['transactionid'], 'DONE', '', $debug ? ADDON_NICEYOUS1ERP_PAYLOADS::debugResponseJson(['item' => $response]) : null);
             $sent++;
 
             // Second call attaches the cover image (matches the NiceYou flow:
             // the ITEDOCDATA row needs the freshly minted item id as its key).
             if (!empty($t['image'])) {
-              $api->setData('ITEM', $newId, ['ITEDOCDATA' => [ADDON_NICEYOUS1ERP_PAYLOADS::itemImageRow($newId, $t['image'])]]);
+              $imageResponse = $api->setData('ITEM', $newId, ['ITEDOCDATA' => [ADDON_NICEYOUS1ERP_PAYLOADS::itemImageRow($newId, $t['image'])]]);
+              if ($debug) {
+                $this->markTransaction((int)$tr['transactionid'], 'DONE', '', ADDON_NICEYOUS1ERP_PAYLOADS::debugResponseJson(['item' => $response, 'image' => $imageResponse]));
+              }
             }
           } else {
-            $this->markTransaction((int)$tr['transactionid'], 'ERROR', (string)($response['error'] ?? 'Unknown ERP error'));
+            $this->markTransaction((int)$tr['transactionid'], 'ERROR', (string)($response['error'] ?? 'Unknown ERP error'), $debug ? ADDON_NICEYOUS1ERP_PAYLOADS::debugResponseJson(['item' => $response]) : null);
             $failed++;
           }
         } else {
           $response = $api->setData('ITEM', $erpId, ADDON_NICEYOUS1ERP_PAYLOADS::itemUpdate($t, $erpId, $cfg));
 
           if (!empty($response['success'])) {
-            $this->markTransaction((int)$tr['transactionid'], 'DONE');
+            $this->markTransaction((int)$tr['transactionid'], 'DONE', '', $debug ? ADDON_NICEYOUS1ERP_PAYLOADS::debugResponseJson(['item' => $response]) : null);
             $sent++;
           } else {
-            $this->markTransaction((int)$tr['transactionid'], 'ERROR', (string)($response['error'] ?? 'Unknown ERP error'));
+            $this->markTransaction((int)$tr['transactionid'], 'ERROR', (string)($response['error'] ?? 'Unknown ERP error'), $debug ? ADDON_NICEYOUS1ERP_PAYLOADS::debugResponseJson(['item' => $response]) : null);
             $failed++;
           }
         }
@@ -254,12 +258,15 @@ class ADDON_NICEYOUS1ERP_PRODUCTS extends ADDON_NICEYOUS1ERP
     return rtrim(GetConfig('ShopPath'), '/') . '/' . $linkPart . '/' . $prodcurl;
   }
 
-  private function markTransaction(int $transactionId, string $status, string $message = ''): void
+  private function markTransaction(int $transactionId, string $status, string $message = '', ?string $response = null): void
   {
     $saveData = [
       'status' => $status,
       'message' => $message,
     ];
+    if ($response !== null) {
+      $saveData['response'] = $response;
+    }
     $GLOBALS['db']->UpdateQuery('addon_niceyous1erp_transactions', $saveData, 'transactionid = ' . $transactionId);
   }
 }

@@ -394,4 +394,23 @@ class ADDON_NICEYOUS1ERP_PAYLOADS
   {
     return trim(implode(' ', array_filter(array_map('trim', $optionValues))));
   }
+
+  /**
+   * Debug log of raw ERP replies for one transaction, keyed by call
+   * ('item', 'image'). Truncated so a pathological ERP reply can't bloat
+   * the transactions table.
+   */
+  public static function debugResponseJson(array $responses, int $maxLength = 65535): string
+  {
+    $json = json_encode($responses, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+      $json = json_encode(['encode_error' => json_last_error_msg()]);
+    }
+
+    if (mb_strlen($json) > $maxLength) {
+      $json = mb_substr($json, 0, $maxLength);
+    }
+
+    return $json;
+  }
 }

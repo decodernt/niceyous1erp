@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS `%%PREFIX%%addon_niceyous1erp_transactions` (
   `payload` longtext NOT NULL,
   `status` varchar(16) NOT NULL DEFAULT 'TODO',
   `message` text NULL,
+  `response` mediumtext NULL,
   `created` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`transactionid`),
   KEY `i_niceyous1erp_transactions_status` (`status`),

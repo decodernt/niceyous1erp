@@ -50,7 +50,7 @@ class ADDON_NICEYOUS1ERP extends ADDON
   public $V8Ready = true;
 
   /** Bump together with EnsureSchema() steps. */
-  const SCHEMA_VERSION = 2;
+  const SCHEMA_VERSION = 3;
 
   /** Rows per page in the Mappings tab tables (server render + AJAX). */
   const MAPPINGS_PAGE_SIZE = 50;
@@ -120,6 +120,13 @@ class ADDON_NICEYOUS1ERP extends ADDON
             'name' => $this->langVar . 'PushProductsEnabled',
             'help' => $this->langVar . 'PushProductsEnabledHelp',
             'label' => $this->langVar . 'PushProductsEnabledLabel'
+          ],
+          'DebugProductSync' => [
+            'type' => 'checkbox',
+            'required' => false,
+            'name' => $this->langVar . 'DebugProductSync',
+            'help' => $this->langVar . 'DebugProductSyncHelp',
+            'label' => $this->langVar . 'DebugProductSyncLabel'
           ],
           'WebFifoEnabled' => [
             'type' => 'checkbox',
@@ -524,6 +531,8 @@ class ADDON_NICEYOUS1ERP extends ADDON
    * side becomes BRANDS — NiceYou's MTRCATEGORY list holds brand names, so
    * matching against eshop categories was wrong. Existing category-based rows
    * are wiped; re-run Bootstrap Categories after this lands.
+   * v3: transactions gain a `response` column holding the raw ERP reply when
+   * the DebugProductSync setting is on.
    */
   protected function EnsureSchema(): void
   {
@@ -547,6 +556,14 @@ class ADDON_NICEYOUS1ERP extends ADDON
     $result = $GLOBALS['db']->Query("SHOW COLUMNS FROM $table LIKE 'categoryid';");
     if ($GLOBALS['db']->FetchOne($result)) {
       $alter = $GLOBALS['db']->Query("ALTER TABLE $table DROP COLUMN `categoryid`, DROP COLUMN `cat_title`;");
+      $GLOBALS['db']->Execute($alter);
+    }
+
+    $transactions = '[|PREFIX|]addon_niceyous1erp_transactions';
+
+    $result = $GLOBALS['db']->Query("SHOW COLUMNS FROM $transactions LIKE 'response';");
+    if (!$GLOBALS['db']->FetchOne($result)) {
+      $alter = $GLOBALS['db']->Query("ALTER TABLE $transactions ADD COLUMN `response` mediumtext NULL AFTER `message`;");
       $GLOBALS['db']->Execute($alter);
     }
 
@@ -1166,6 +1183,7 @@ class ADDON_NICEYOUS1ERP extends ADDON
           'combinationid' => $row['combinationid'],
           'status' => $row['status'],
           'message' => $row['message'],
+          'response' => (string)($row['response'] ?? ''),
           'created' => ng_date('d/m/Y H:i', (int)$row['created']),
         ];
       }

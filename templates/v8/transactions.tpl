@@ -23,6 +23,7 @@
 							<th>{% lang 'NICEYOUS1ERP_Combination' %}</th>
 							<th>{% lang 'NICEYOUS1ERP_Status' %}</th>
 							<th>{% lang 'NICEYOUS1ERP_Message' %}</th>
+							<th>{% lang 'NICEYOUS1ERP_Response' %}</th>
 							<th>{% lang 'NICEYOUS1ERP_Created' %}</th>
 						</tr>
 					</thead>
@@ -42,6 +43,16 @@
 									{% endif %}
 								</td>
 								<td>{{ tr.message }}</td>
+								<td>
+									{% if tr.response is not empty %}
+										<details>
+											<summary class="text-primary cursor-pointer">{% lang 'NICEYOUS1ERP_ResponseShow' %}</summary>
+											<pre class="bg-light p-3 rounded mb-0 mt-2" style="max-width: 420px; max-height: 240px; overflow: auto; white-space: pre-wrap; word-break: break-all;">{{ tr.response }}</pre>
+										</details>
+									{% else %}
+										<span class="text-muted">-</span>
+									{% endif %}
+								</td>
 								<td>{{ tr.created }}</td>
 							</tr>
 						{% endfor %}
