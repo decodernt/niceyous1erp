@@ -86,6 +86,7 @@ class ADDON_NICEYOUS1ERP extends ADDON
     NagaCommerce_Event::bind('ShipmentCreated', [$this, 'ShipmentCreated'], 'ShipmentCreated');
     NagaCommerce_Event::bind('OrderUpdated', [$this, 'OrderUpdated']);
     NagaCommerce_Event::bind('OrderStatusChanged', [$this, 'OrderStatusChanged']);
+    NagaCommerce_Event::bind('multi_delete_products', [$this, 'ProductsDeleted']);
 
     // Master switch: the cron only runs when auto-sync is explicitly on,
     // so a configured connection alone never starts syncing. Manual admin
@@ -1119,11 +1120,8 @@ class ADDON_NICEYOUS1ERP extends ADDON
     $deleted = GetClass('NG_ADMIN_PRODUCT')->DoDeleteProducts($productIds);
 
     if ($deleted) {
-      // Drop any map/queue leftovers for the removed products.
-      $idList = implode(',', $productIds);
-      $GLOBALS['db']->DeleteQuery('addon_niceyous1erp_product_map', 'WHERE productid IN (' . $idList . ')');
-      $GLOBALS['db']->DeleteQuery('addon_niceyous1erp_transactions', 'WHERE productid IN (' . $idList . ')');
-
+      // Map/queue cleanup happens in ProductsDeleted via the
+      // multi_delete_products event DoDeleteProducts fires.
       $GLOBALS['NG_CLASS_LOG']->LogAdminAction(count($productIds) . ' products deleted via niceyous1erp mappings report');
       FlashMessage(GetLang('ProductsDeletedSuccessfully'), MSG_SUCCESS);
     }
@@ -1407,6 +1405,25 @@ class ADDON_NICEYOUS1ERP extends ADDON
         ]
       ];
     }
+  }
+
+  /**
+   * Hygiene on core product deletion (admin screen, API, or our own mass
+   * delete — DoDeleteProducts fires this after commit): drop the ERP map
+   * rows and any queued pushes for the removed products. Deliberately NOT
+   * gated by AutoSyncEnabled — it's local cleanup, nothing goes to the ERP.
+   */
+  public function ProductsDeleted(NagaCommerce_Event $event)
+  {
+    $prodIds = array_values(array_filter(array_map('intval', (array)($event->data['prodids'] ?? [])), 'isId'));
+
+    if (empty($prodIds)) {
+      return;
+    }
+
+    $idList = implode(',', $prodIds);
+    $GLOBALS['db']->DeleteQuery('addon_niceyous1erp_product_map', 'WHERE productid IN (' . $idList . ')');
+    $GLOBALS['db']->DeleteQuery('addon_niceyous1erp_transactions', 'WHERE productid IN (' . $idList . ')');
   }
 
   protected function orderHasReceipt(int $orderId): bool
