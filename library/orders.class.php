@@ -256,7 +256,7 @@ class ADDON_NICEYOUS1ERP_ORDERS extends ADDON_NICEYOUS1ERP
       $lines[] = [
         'mtrl' => $this->GetProductMtrl($productId, $combinationId),
         'qty' => (int)$product['ordprodqty'],
-        'price_inc' => (float)$product['price_inc_tax'],
+        'price_inc' => (float)$product['dis_price_inc_tax'],
         'vat_rate' => (float)($product['vat_rate'] ?? 0),
         'tax_class_id' => $this->productTaxClass($productId),
       ];
