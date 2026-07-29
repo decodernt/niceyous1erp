@@ -134,7 +134,7 @@ class ADDON_NICEYOUS1ERP_ORDERS extends ADDON_NICEYOUS1ERP
       $customerKey = $this->api->findFirstRowId('CUSTOMER', 'WSItems', 'CUSTOMER.PHONE01=' . $orderInfo['ordbillphone']);
     }
 
-    $payload = ADDON_NICEYOUS1ERP_PAYLOADS::customer($orderInfo, $this->isInvoice, $this->cfg);
+    $payload = ADDON_NICEYOUS1ERP_PAYLOADS::customer($orderInfo, $this->isInvoice, $this->cfg, $customerKey !== '');
 
     try {
       $response = $this->api->setData('CUSTOMER', $customerKey, ['CUSTOMER' => [$payload]]);
@@ -177,7 +177,8 @@ class ADDON_NICEYOUS1ERP_ORDERS extends ADDON_NICEYOUS1ERP
       $paymentCode = (string)$this->cfg['irisPaymentCode'];
     }
 
-    $discountTotal = (float)($orderInfo['orddiscountamount'] ?? 0);
+    // Final prices are sent to S1 so no discount applied
+    $discountTotal = 0; //(float)($orderInfo['orddiscountamount'] ?? 0);
 
     $data = [];
     $data['SALDOC'] = [ADDON_NICEYOUS1ERP_PAYLOADS::saldocHeader(

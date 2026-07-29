@@ -154,13 +154,17 @@ class ADDON_NICEYOUS1ERP_PAYLOADS
 
   /**
    * CUSTOMER payload from the order billing details (NiceYou shape:
-   * CODE WEB{customerid}, PHONE01, fixed currency/branch, TRDBUSINESS from
-   * settings, invoice fields only when an invoice was requested).
+   * PHONE01, fixed currency/branch, TRDBUSINESS from settings, invoice
+   * fields only when an invoice was requested).
+   *
+   * CODE travels only on inserts: WEB{customerid} for registered customers,
+   * WEBG{orderid} for guests (ordcustid=0 — the order id keeps guest codes
+   * unique). Updates never send CODE so an ERP customer matched by
+   * email/phone keeps whatever code it already has.
    */
-  public static function customer(array $orderInfo, bool $isInvoice, array $cfg): array
+  public static function customer(array $orderInfo, bool $isInvoice, array $cfg, bool $isUpdate = false): array
   {
     $customer = [
-      'CODE' => $cfg['customerCodePrefix'] . (int)$orderInfo['ordcustid'],
       'NAME' => trim($orderInfo['ordbillfirstname'] . ' ' . $orderInfo['ordbilllastname']),
       'EMAIL' => (string)$orderInfo['ordbillemail'],
       'PHONE01' => (string)$orderInfo['ordbillphone'],
@@ -172,6 +176,15 @@ class ADDON_NICEYOUS1ERP_PAYLOADS
       'ISACTIVE' => '1',
       'TRDBUSINESS' => (string)$cfg['trdBusinessCode'],
     ];
+
+    if (!$isUpdate) {
+      $customerId = (int)$orderInfo['ordcustid'];
+      $customer = [
+        'CODE' => $customerId > 0
+          ? $cfg['customerCodePrefix'] . $customerId
+          : $cfg['customerCodePrefix'] . 'G' . (int)$orderInfo['orderid'],
+      ] + $customer;
+    }
 
     $countryCode = strtoupper((string)($orderInfo['ordbillcountrycode'] ?? ''));
     if (isset($cfg['countryMap'][$countryCode])) {
@@ -203,11 +216,8 @@ class ADDON_NICEYOUS1ERP_PAYLOADS
       'SHIPMENT' => (string)$cfg['shipmentCode'],
       'FINCODE' => (string)$orderId,
       'SHIPKIND' => (string)$cfg['shipKindCode'],
+      'DISC1VAL' => (float) $discountTotal
     ];
-
-    if ($discountTotal > 0) {
-      $saldoc['DISC1VAL'] = $discountTotal;
-    }
 
     return $saldoc;
   }
