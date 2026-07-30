@@ -207,7 +207,10 @@ class ADDON_NICEYOUS1ERP_ORDERS extends ADDON_NICEYOUS1ERP
       + (float)($orderInfo['handling_cost_inc_tax'] ?? 0)
       + (float)($orderInfo['wrapping_cost_inc_tax'] ?? 0);
 
-    [$expenseRows] = ADDON_NICEYOUS1ERP_PAYLOADS::expenses($shippingIncTax, $isCod, $lineNum, $this->cfg);
+    // COD fee actually charged on this order (payment module additional cost).
+    $codFeeIncTax = (float)($orderInfo['additional_cost_inc_tax'] ?? 0);
+
+    [$expenseRows] = ADDON_NICEYOUS1ERP_PAYLOADS::expenses($shippingIncTax, $isCod, $codFeeIncTax, $lineNum, $this->cfg);
     if (!empty($expenseRows)) {
       $data['EXPANAL'] = $expenseRows;
     }

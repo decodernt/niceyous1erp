@@ -180,7 +180,6 @@ class ADDON_NICEYOUS1ERP extends ADDON
           'CustomerCodePrefix' => ['type' => 'text', 'required' => false, 'default' => 'WEB', 'name' => $this->langVar . 'CustomerCodePrefix', 'help' => $this->langVar . 'CustomerCodePrefixHelp'],
           'ShippingExpenseCode' => ['type' => 'text', 'required' => false, 'default' => '104', 'name' => $this->langVar . 'ShippingExpenseCode', 'help' => $this->langVar . 'ShippingExpenseCodeHelp'],
           'CodExpenseCode' => ['type' => 'text', 'required' => false, 'default' => '105', 'name' => $this->langVar . 'CodExpenseCode', 'help' => $this->langVar . 'CodExpenseCodeHelp'],
-          'CodFeeAmount' => ['type' => 'text', 'required' => false, 'default' => '2.90', 'name' => $this->langVar . 'CodFeeAmount', 'help' => $this->langVar . 'CodFeeAmountHelp'],
           'CodModules' => ['type' => 'text', 'required' => false, 'default' => 'checkout_cashondelivery', 'name' => $this->langVar . 'CodModules', 'help' => $this->langVar . 'CodModulesHelp'],
           'ExpenseVatPercent' => ['type' => 'text', 'required' => false, 'default' => '24', 'name' => $this->langVar . 'ExpenseVatPercent', 'help' => $this->langVar . 'ExpenseVatPercentHelp'],
         ]
@@ -647,7 +646,6 @@ class ADDON_NICEYOUS1ERP extends ADDON
       'expenseVatPercent' => (float)$this->GetValue('ExpenseVatPercent') ?: null,
       'shippingExpenseCode' => $this->GetValue('ShippingExpenseCode'),
       'codExpenseCode' => $this->GetValue('CodExpenseCode'),
-      'codFeeAmount' => (float)$this->GetValue('CodFeeAmount') ?: null,
       'codModules' => !empty($codModules) ? $codModules : null,
     ]);
   }

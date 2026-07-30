@@ -39,7 +39,6 @@ class ADDON_NICEYOUS1ERP_PAYLOADS
       'expenseVatPercent' => 24.0,
       'shippingExpenseCode' => '104',
       'codExpenseCode' => '105',
-      'codFeeAmount' => 2.90,
       'codModules' => ['checkout_cashondelivery'],
       'countryMap' => ['GR' => '1000|Ελλάς', 'CY' => '1014|Ελλάς'],
       'lineNumStart' => 9000000,
@@ -276,9 +275,11 @@ class ADDON_NICEYOUS1ERP_PAYLOADS
    * EXPANAL expense rows: shipping cost and (when paid cash-on-delivery)
    * the COD fee, both net of VAT — the NiceYou model books these as ERP
    * expense lines, not as pseudo-products.
+   * $codFeeIncTax is the fee actually charged on the order (the payment
+   * module's additional cost, tax inclusive) — a free-COD order books none.
    * Returns [rows, nextLineNum].
    */
-  public static function expenses(float $shippingIncTax, bool $isCod, int $startLineNum, array $cfg): array
+  public static function expenses(float $shippingIncTax, bool $isCod, float $codFeeIncTax, int $startLineNum, array $cfg): array
   {
     $rows = [];
     $lineNum = $startLineNum;
@@ -294,9 +295,9 @@ class ADDON_NICEYOUS1ERP_PAYLOADS
       ];
     }
 
-    if ($isCod && (float)$cfg['codFeeAmount'] > 0) {
+    if ($isCod && $codFeeIncTax > 0) {
       $lineNum++;
-      $net = self::netOfVat((float)$cfg['codFeeAmount'], (float)$cfg['expenseVatPercent']);
+      $net = self::netOfVat($codFeeIncTax, (float)$cfg['expenseVatPercent']);
       $rows[] = [
         'LINENUM' => $lineNum,
         'EXPN' => (string)$cfg['codExpenseCode'],
