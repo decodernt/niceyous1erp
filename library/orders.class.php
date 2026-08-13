@@ -89,9 +89,10 @@ class ADDON_NICEYOUS1ERP_ORDERS extends ADDON_NICEYOUS1ERP
     $orderInfo = GetOrder($this->orderId, true, true);
 
     // Only physical products travel to the ERP.
-    $orderInfo['products'] = array_filter($orderInfo['products'], function ($product) {
-      return $product['ordprodtype'] == 'physical';
-    });
+    // ERPs track the real inventory SKUs: bundle COMPONENT rows are always
+    // exported (they are the actual stock movements) and virtual bundle
+    // PARENT rows are never sent, regardless of the bundle's shipping_mode.
+    $orderInfo['products'] = Bundles_Orders::erpLines($orderInfo['products']);
 
     $this->orderInfo = $orderInfo;
     $this->isInvoice = ADDON_NICEYOUS1ERP_PAYLOADS::isInvoiceOrder($orderInfo);
