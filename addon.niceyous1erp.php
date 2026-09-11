@@ -295,6 +295,11 @@ class ADDON_NICEYOUS1ERP extends ADDON
             'link' => 'index.php?ToDo=runAddon&addon=' . $this->id . '&route=viewMapped',
             'active' => false
           ),
+          'Customers' => array(
+            'name' => $this->langVar . 'MappedCustomers',
+            'link' => 'index.php?ToDo=runAddon&addon=' . $this->id . '&route=viewCustomers',
+            'active' => false
+          ),
           'Transactions' => array(
             'name' => $this->langVar . 'Transactions',
             'link' => 'index.php?ToDo=runAddon&addon=' . $this->id . '&route=viewTransactions',
@@ -383,6 +388,14 @@ class ADDON_NICEYOUS1ERP extends ADDON
 
       case 'removecategorymapping':
         $this->removeCategoryMapping();
+        break;
+
+      case 'viewcustomers':
+        $this->viewCustomers();
+        break;
+
+      case 'removecustomermapping':
+        $this->removeCustomerMapping();
         break;
 
       case 'viewtransactions':
@@ -1009,6 +1022,74 @@ class ADDON_NICEYOUS1ERP extends ADDON
 
     $GLOBALS['db']->DeleteQuery('addon_niceyous1erp_category_map', 'WHERE mapid = ' . $mapId);
 
+    FlashMessage(GetLang($this->langVar . 'MappingRemoved'), MSG_SUCCESS, $redirectUrl);
+  }
+
+  /**
+   * Customers tab: eshop customer -> ERP TRDR map, searchable and paged,
+   * with per-row removal. Removing a link is safe — the next order push for
+   * that customer re-resolves the ERP customer by email/phone (or creates
+   * one) and re-creates the map row.
+   */
+  private function viewCustomers()
+  {
+    $this->template_data['Module']['ModuleTabs']['Customers']['active'] = true;
+
+    require_once(__DIR__ . '/library/customermap.class.php');
+
+    $search = trim((string)($_REQUEST['search'] ?? ''));
+    $page = max(1, (int)($_REQUEST['page'] ?? 1));
+
+    $customerMap = new ADDON_NICEYOUS1ERP_CUSTOMERMAP();
+    $list = $customerMap->search($search, $page);
+
+    foreach ($list['rows'] as &$row) {
+      $row['last_update'] = $row['last_update'] > 0 ? ng_date('d/m/Y H:i', $row['last_update']) : '-';
+    }
+    unset($row);
+
+    $this->template_data['customers'] = [
+      'search' => $search,
+      'total' => $list['total'],
+      'page' => $list['page'],
+      'totalPages' => $list['totalPages'],
+      'pageSize' => ADDON_NICEYOUS1ERP_CUSTOMERMAP::PAGE_SIZE,
+      'rows' => $list['rows'],
+    ];
+    $this->template_data['Pagination'] = GetPaginationLinks($list['totalPages'], $list['page']);
+
+    $this->ParseTemplate('customers', false, $this->template_data);
+  }
+
+  /**
+   * Drop a customer<->ERP link (see viewCustomers for why this is safe).
+   */
+  private function removeCustomerMapping()
+  {
+    $redirectUrl = "/admin/index.php?ToDo=runAddon&addon=$this->id&route=viewCustomers";
+
+    $search = trim((string)($_REQUEST['search'] ?? ''));
+    $page = max(1, (int)($_REQUEST['page'] ?? 1));
+    if ($search !== '' || $page > 1) {
+      $redirectUrl .= '&' . http_build_query(['search' => $search, 'page' => $page]);
+    }
+
+    $customerId = (int)($_REQUEST['customerId'] ?? 0);
+
+    if ($customerId <= 0) {
+      FlashMessage(GetLang($this->langVar . 'InvalidMapping'), MSG_ERROR, $redirectUrl);
+      return;
+    }
+
+    require_once(__DIR__ . '/library/customermap.class.php');
+
+    $customerMap = new ADDON_NICEYOUS1ERP_CUSTOMERMAP();
+    if (!$customerMap->remove($customerId)) {
+      FlashMessage(GetLang($this->langVar . 'InvalidMapping'), MSG_ERROR, $redirectUrl);
+      return;
+    }
+
+    $GLOBALS['NG_CLASS_LOG']->LogAdminAction('niceyous1erp customer mapping removed for customer #' . $customerId);
     FlashMessage(GetLang($this->langVar . 'MappingRemoved'), MSG_SUCCESS, $redirectUrl);
   }
 

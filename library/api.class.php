@@ -108,14 +108,16 @@ class ADDON_NICEYOUS1ERP_API
       return [];
     }
 
-    $dataResponse = $this->post([
+    $dataReqPayload = [
       'service' => 'getBrowserData',
       'clientID' => $this->clientID,
       'appId' => $this->appId,
       'reqID' => $infoResponse['reqID'],
       'start' => $start,
       'limit' => $limit,
-    ]);
+    ];
+
+    $dataResponse = $this->post($dataReqPayload);
 
     if (empty($dataResponse['success']) || empty($dataResponse['rows'])) {
       return [];

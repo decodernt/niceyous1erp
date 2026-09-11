@@ -128,11 +128,11 @@ class ADDON_NICEYOUS1ERP_ORDERS extends ADDON_NICEYOUS1ERP
     }
 
     if ($customerKey === '' && !empty($orderInfo['ordbillemail'])) {
-      $customerKey = $this->api->findFirstRowId('CUSTOMER', 'WSItems', 'CUSTOMER.EMAIL="' . $orderInfo['ordbillemail'] . '"');
+      $customerKey = $this->api->findFirstRowId('CUSTOMER', 'WSItems', 'CUSTOMER.EMAIL=' . $orderInfo['ordbillemail'] .'&CUSTOMER.EMAIL_TO='.$orderInfo['ordbillemail']);
     }
 
     if ($customerKey === '' && !empty($orderInfo['ordbillphone'])) {
-      $customerKey = $this->api->findFirstRowId('CUSTOMER', 'WSItems', 'CUSTOMER.PHONE01=' . $orderInfo['ordbillphone']);
+      $customerKey = $this->api->findFirstRowId('CUSTOMER', 'WSItems', 'CUSTOMER.PHONE01=' . $orderInfo['ordbillphone'] . '&CUSTOMER.PHONE01_TO='.$orderInfo['ordbillphone']);
     }
 
     $payload = ADDON_NICEYOUS1ERP_PAYLOADS::customer($orderInfo, $this->isInvoice, $this->cfg, $customerKey !== '');

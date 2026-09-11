@@ -76,6 +76,9 @@ flow back ERP → eshop.
 
 ## Monitoring
 
+- **Customers tab** — eshop customer → ERP TRDR map (search by name, email,
+  TRDR or customer id; paged). "Remove" drops the link; the next order push
+  re-resolves the ERP customer by email/phone or creates a new one.
 - **Transactions tab** — per-product push status (TODO/DONE/ERROR + message).
 - **Order Reports tab** — per-order sync results (filterable by orderId).
 - **Order Documents tab / order quick-view** — SALDOC receipt IDs.
