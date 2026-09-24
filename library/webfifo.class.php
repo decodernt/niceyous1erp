@@ -1,67 +1,39 @@
 <?php
 
+require_once(__DIR__ . '/webfifostore.class.php');
+
 /**
  * NiceYou SoftOne ERP - WEB-FIFO purchase price sync (ERP -> eshop).
  *
  * The only reverse-direction flow in the NiceYou model: the ERP publishes a
  * "WEB-FIFO" browser list with each item's purchase (FIFO) price. Fetch()
- * stages the rows locally, Apply() writes them onto the products' cost
- * price via the product map, flagging each staged row once applied.
+ * pulls the list and stages the rows locally, Apply() writes them onto the
+ * products' cost price via the product map, flagging each staged row once
+ * applied. Row handling lives in ADDON_NICEYOUS1ERP_WEBFIFOSTORE (unit
+ * tested against FakeDb); this class owns the ERP round trip.
  */
 class ADDON_NICEYOUS1ERP_WEBFIFO extends ADDON_NICEYOUS1ERP
 {
   // Column layout of the WEB-FIFO browser list on the NiceYou installation.
-  const COL_MTRL = 2;
-  const COL_NAME = 4;
-  const COL_PRICE = 5;
+  const COL_MTRL = ADDON_NICEYOUS1ERP_WEBFIFOSTORE::COL_MTRL;
+  const COL_NAME = ADDON_NICEYOUS1ERP_WEBFIFOSTORE::COL_NAME;
+  const COL_PRICE = ADDON_NICEYOUS1ERP_WEBFIFOSTORE::COL_PRICE;
 
   /**
    * Stage the ERP purchase prices. Returns the number of staged rows.
+   * @throws Exception on ERP/auth failure or when rows could not be staged
    */
   public function Fetch(): int
   {
     $api = $this->ConnectApi();
     $rows = $api->browserRows('ITEM', 'WEB-FIFO');
 
-    $staged = 0;
-    $now = time();
+    // The browser round trip can take long enough for the cron's DB handle
+    // to be dropped ("MySQL server has gone away" on the first query after
+    // it). Re-establish it before touching the staging table.
+    ADDON_NICEYOUS1ERP_WEBFIFOSTORE::ensureDbConnectionAlive();
 
-    foreach ($rows as $row) {
-      $mtrl = trim((string)($row[self::COL_MTRL] ?? ''));
-      if ($mtrl === '') {
-        continue;
-      }
-
-      $name = (string)($row[self::COL_NAME] ?? '');
-      $price = (float)($row[self::COL_PRICE] ?? 0);
-
-      $query = "SELECT mtrl FROM [|PREFIX|]addon_niceyous1erp_webfifo WHERE mtrl = ?;";
-      $result = $GLOBALS['db']->Query($query);
-      $GLOBALS['db']->bindParam($result, 1, $mtrl, PDO::PARAM_STR);
-
-      if ($GLOBALS['db']->FetchOne($result)) {
-        $saveData = [
-          'name' => $name,
-          'purchase_price' => $price,
-          'last_update' => $now,
-          'applied' => 0,
-        ];
-        $GLOBALS['db']->UpdateQuery('addon_niceyous1erp_webfifo', $saveData, "mtrl = '" . $GLOBALS['db']->Quote($mtrl) . "'");
-      } else {
-        $saveData = [
-          'mtrl' => $mtrl,
-          'name' => $name,
-          'purchase_price' => $price,
-          'last_update' => $now,
-          'applied' => 0,
-        ];
-        $GLOBALS['db']->InsertQuery('addon_niceyous1erp_webfifo', $saveData);
-      }
-
-      $staged++;
-    }
-
-    return $staged;
+    return (new ADDON_NICEYOUS1ERP_WEBFIFOSTORE())->stage($rows, time());
   }
 
   /**
@@ -70,27 +42,6 @@ class ADDON_NICEYOUS1ERP_WEBFIFO extends ADDON_NICEYOUS1ERP
    */
   public function Apply(): int
   {
-    $query = "SELECT * FROM [|PREFIX|]addon_niceyous1erp_webfifo WHERE applied = 0 AND purchase_price > 0;";
-    $result = $GLOBALS['db']->Query($query);
-    $rows = $GLOBALS['db']->FetchAll($result);
-
-    $updated = 0;
-
-    foreach ((array)$rows as $row) {
-      $mapQuery = "SELECT productid FROM [|PREFIX|]addon_niceyous1erp_product_map WHERE erp_mtrl = ? LIMIT 1;";
-      $mapResult = $GLOBALS['db']->Query($mapQuery);
-      $GLOBALS['db']->bindParam($mapResult, 1, $row['mtrl'], PDO::PARAM_STR);
-
-      if ($mapRow = $GLOBALS['db']->FetchOne($mapResult)) {
-        $saveData = ['prodcostprice' => (float)$row['purchase_price']];
-        $GLOBALS['db']->UpdateQuery('products', $saveData, 'productid = ' . (int)$mapRow['productid']);
-        $updated++;
-      }
-
-      $flagData = ['applied' => 1];
-      $GLOBALS['db']->UpdateQuery('addon_niceyous1erp_webfifo', $flagData, "mtrl = '" . $GLOBALS['db']->Quote($row['mtrl']) . "'");
-    }
-
-    return $updated;
+    return (new ADDON_NICEYOUS1ERP_WEBFIFOSTORE())->applyPending();
   }
 }

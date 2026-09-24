@@ -12,7 +12,7 @@ flow back ERP → eshop.
 |------|-----------|---------|-----------|
 | Product push | eshop → ERP | cron (10 min) / "Push Products" button | Changed products (from `lastProductPush` watermark) queued into `addon_niceyous1erp_transactions` (TODO/DONE/ERROR), drained as raw `s1services` `ITEM` setData calls. `CODE = <CodePrefix><sku>`, EAN dedup against ERP `ITEM.CODE1`, cover image attached via `ITEDOCDATA` (SOSOURCE 51). |
 | Order push | eshop → ERP | order events (see below) | Customer upserted (local `customer_map` + ERP email→phone dedup), then a `SALDOC` is created/updated. Receipt series 6003 vs invoice series 6004 depending on the order's invoice request. Shipping (`104`) and COD fee (`105`) as EXPANAL expense rows, net of `ExpenseVatPercent`. `FINCODE = orderid`. |
-| WEB-FIFO | ERP → eshop | cron / "WEB-FIFO Sync" button | ERP's `WEB-FIFO` browser list staged into `addon_niceyous1erp_webfifo`, then applied to `products.prodcostprice` via the product map. |
+| WEB-FIFO | ERP → eshop | cron / "WEB-FIFO Sync" button | ERP's `WEB-FIFO` browser list staged into `addon_niceyous1erp_webfifo` (atomic `INSERT … ON DUPLICATE KEY UPDATE` per row, DB handle re-checked after the long browser call — see `library/webfifostore.class.php`), then applied to `products.prodcostprice` via the product map. |
 | Bootstrap | one-time | orange buttons on addon home | Product map by EAN/barcode against `WSItems`; ERP category map by exact name against eshop **brands** (NiceYou's `ITECATEGORY`/MTRCATEGORY list holds brand names, not categories — schema v2). |
 
 ## First-time setup (in this order)
